@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, interactive-widget=resizes-content">
+    <title>Orbe Cromático</title>
+    
+    <!-- Fuentes de Google -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Estilos CSS integrados -->
+    <style>
+        /* --- Reset y configuración base --- */
+        body {
+            font-family: 'Poppins', sans-serif;
+            background: linear-gradient(45deg, #111827, #1f2937, #374151);
+            background-size: 400% 400%;
+            animation: gradientAnimation 15s ease infinite;
+            color: white;
+            margin: 0;
+            overflow: hidden; /* Evita barras de scroll */
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            /* Evita acciones no deseadas en móviles como el zoom por doble toque */
+            touch-action: manipulation; 
+        }
+
+        /* --- Animación del fondo --- */
+        @keyframes gradientAnimation {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+
+        /* --- Estilos del Canvas y Contenedor --- */
+        #game-container {
+            position: relative;
+            width: 100%;
+            height: 100%;
+        }
+
+        canvas {
+            display: block;
+            cursor: pointer;
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+        
+        /* --- Interfaz de Usuario (Puntuación y Vidas) --- */
+        #ui {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            padding: 1.5rem;
+            box-sizing: border-box;
+            display: flex;
+            justify-content: space-between;
+            font-size: 1.5rem;
+            font-weight: 600;
+            pointer-events: none; /* Permite hacer clic a través de la UI al canvas */
+            z-index: 10;
+            text-shadow: 0px 0px 8px rgba(0,0,0,0.7);
+        }
+
+        /* --- Ventana Modal (Inicio / Fin del juego) --- */
+        #modalEl {
+            position: absolute;
+            inset: 0;
+            background-color: rgba(0, 0, 0, 0.6);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 1rem;
+            z-index: 20;
+        }
+
+        .modal-card {
+            background-color: rgba(31, 41, 55, 0.8);
+            backdrop-filter: blur(8px);
+            padding: 2.5rem;
+            border-radius: 1.5rem;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.4);
+            text-align: center;
+            max-width: 28rem;
+            width: 100%;
+            animation: fadeIn 0.5s ease-out;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px) scale(0.95); }
+            to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+
+        #modalTitle {
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin: 0 0 0.5rem 0;
+        }
+
+        #modalSubtitle {
+            color: #d1d5db;
+            margin: 0 0 1.5rem 0;
+            line-height: 1.6;
+        }
+
+        #modalScore {
+            font-size: 4.5rem;
+            font-weight: 700;
+            margin-bottom: 1.5rem;
+            color: #facc15; /* Amarillo para destacar */
+        }
+
+        #startGameBtn {
+            background-color: #4f46e5;
+            width: 100%;
+            padding: 1rem 1.5rem;
+            border-radius: 0.75rem;
+            font-size: 1.25rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            border: none;
+            color: white;
+            cursor: pointer;
+            transition: all 0.2s ease-in-out;
+        }
+
+        #startGameBtn:hover {
+            background-color: #6366f1;
+            transform: scale(1.05);
+            box-shadow: 0 0 25px rgba(99, 102, 241, 0.5);
+        }
+
+        .hidden {
+            display: none;
+        }
+        
+        /* --- Efecto de Sacudida --- */
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            10%, 30%, 50%, 70%, 90% { transform: translateX(-5px); }
+            20%, 40%, 60%, 80% { transform: translateX(5px); }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Estructura HTML del juego -->
+    <div id="game-container">
+        <!-- El canvas donde se dibuja el juego -->
+        <canvas id="gameCanvas"></canvas>
+
+        <!-- Interfaz de usuario que se muestra durante el juego -->
+        <div id="ui" class="hidden">
+            <div>Puntuación: <span id="scoreEl">0</span></div>
+            <div id="livesContainer">Vidas: <span></span></div>
+        </div>
+
+        <!-- Ventana modal para empezar o reiniciar -->
+        <div id="modalEl">
+            <div class="modal-card">
+                <h1 id="modalTitle">Orbe Cromático</h1>
+                <p id="modalSubtitle">Toca la pantalla para cambiar el color de tu orbe y hacerlo coincidir con los que se aproximan.</p>
+                <p id="modalScore" class="hidden">0</p>
+                <button id="startGameBtn">Empezar Juego</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Lógica del Juego (JavaScript) -->
+    <script>
+        // --- CONFIGURACIÓN INICIAL ---
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        const modalEl = document.getElementById('modalEl');
+        const startGameBtn = document.getElementById('startGameBtn');
+        const scoreEl = document.getElementById('scoreEl');
+        const modalScore = document.getElementById('modalScore');
+        const modalTitle = document.getElementById('modalTitle');
+        const modalSubtitle = document.getElementById('modalSubtitle');
+        const ui = document.getElementById('ui');
+        const livesContainer = document.getElementById('livesContainer');
+
+        let animationId;
+        let score;
+        let lives;
+        let player;
+        let enemies = [];
+        let particles = [];
+        let spawnInterval;
+        let gameActive = false;
+
+        // Paleta de colores del juego
+        const colors = [
+            { name: 'cyan', hex: '#22d3ee' },
+            { name: 'pink', hex: '#ec4899' },
+            { name: 'green', hex: '#4ade80' },
+            { name: 'yellow', hex: '#facc15' }
+        ];
+
+        // Función para ajustar el tamaño del canvas a la ventana
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        // --- CLASES DEL JUEGO ---
+
+        // Clase para el Orbe del Jugador
+        class Player {
+            constructor(x, y, radius) {
+                this.x = x;
+                this.y = y;
+                this.radius = radius;
+                this.colorIndex = 0;
+                this.color = colors[this.colorIndex].hex;
+                this.scale = 1;
+            }
+
+            draw() {
+                ctx.save();
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius * this.scale, 0, Math.PI * 2, false);
+                ctx.fillStyle = this.color;
+                ctx.shadowColor = this.color;
+                ctx.shadowBlur = 25;
+                ctx.fill();
+                ctx.closePath();
+                ctx.restore();
+            }
+            
+            update() {
+                // Efecto de encogimiento suave después de pulsar
+                if (this.scale > 1) {
+                    this.scale -= 0.05;
+                }
+                this.draw();
+            }
+
+            changeColor() {
+                this.colorIndex = (this.colorIndex + 1) % colors.length;
+                this.color = colors[this.colorIndex].hex;
+                this.scale = 1.3; // Efecto de pulso al cambiar de color
+            }
+        }
+
+        // Clase para los Orbes Enemigos
+        class Enemy {
+            constructor(x, y, radius, color, velocity) {
+                this.x = x;
+                this.y = y;
+                this.radius = radius;
+                this.color = color;
+                this.velocity = velocity;
+            }
+
+            draw() {
+                ctx.save();
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2, false);
+                ctx.fillStyle = this.color;
+                ctx.shadowColor = this.color;
+                ctx.shadowBlur = 10;
+                ctx.fill();
+                ctx.restore();
+            }
+
+            update() {
+                this.x += this.velocity.x;
+                this.y += this.velocity.y;
+                this.draw();
+            }
+        }
+
+        // Clase para las Partículas de Explosión
+        class Particle {
+            constructor(x, y, radius, color, velocity) {
+                this.x = x;
+                this.y = y;
+                this.radius = radius;
+                this.color = color;
+                this.velocity = velocity;
+                this.alpha = 1;
+                this.friction = 0.98;
+            }
+
+            draw() {
+                ctx.save();
+                ctx.globalAlpha = this.alpha;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2, false);
+                ctx.fillStyle = this.color;
+                ctx.fill();
+                ctx.restore();
+            }
+
+            update() {
+                this.velocity.x *= this.friction;
+                this.velocity.y *= this.friction;
+                this.x += this.velocity.x;
+                this.y += this.velocity.y;
+                this.alpha -= 0.02; // Desvanecimiento gradual
+                this.draw();
+            }
+        }
+
+        // --- FUNCIONES DEL JUEGO ---
+
+        // Función para inicializar o reiniciar el estado del juego
+        function init() {
+            score = 0;
+            lives = 3;
+            enemies = [];
+            particles = [];
+            gameActive = true;
+            
+            const x = canvas.width / 2;
+            const y = canvas.height / 2;
+            player = new Player(x, y, 30);
+            
+            scoreEl.innerText = score;
+            updateLivesUI();
+        }
+
+        // Generador de enemigos que se acelera con el tiempo
+        function spawnEnemies() {
+            clearInterval(spawnInterval); // Limpia el intervalo anterior
+            spawnInterval = setInterval(() => {
+                if (!gameActive) return;
+
+                const radius = Math.random() * (20 - 8) + 8;
+                let x, y;
+
+                // Determina una posición de aparición aleatoria fuera de la pantalla
+                if (Math.random() < 0.5) {
+                    x = Math.random() < 0.5 ? 0 - radius : canvas.width + radius;
+                    y = Math.random() * canvas.height;
+                } else {
+                    x = Math.random() * canvas.width;
+                    y = Math.random() < 0.5 ? 0 - radius : canvas.height + radius;
+                }
+                
+                const colorData = colors[Math.floor(Math.random() * colors.length)];
+                const angle = Math.atan2(player.y - y, player.x - x);
+                const speed = 2 + (score * 0.005); // La velocidad aumenta con la puntuación
+                const velocity = { x: Math.cos(angle) * speed, y: Math.sin(angle) * speed };
+
+                enemies.push(new Enemy(x, y, radius, colorData.hex, velocity));
+            }, 1000); // Tasa de aparición fija, la dificultad aumenta con la velocidad
+        }
+
+        // Actualiza la UI de las vidas
+        function updateLivesUI() {
+            livesContainer.innerHTML = 'Vidas: ' + '❤️'.repeat(lives);
+        }
+
+        // Activa el efecto de sacudida en el body
+        function screenShake() {
+            document.body.style.animation = 'shake 0.3s';
+            setTimeout(() => {
+                document.body.style.animation = '';
+            }, 300);
+        }
+
+        // Bucle de animación principal del juego
+        function animate() {
+            animationId = requestAnimationFrame(animate);
+
+            // Dibuja un rectángulo semitransparente para crear un efecto de estela
+            ctx.fillStyle = 'rgba(17, 24, 39, 0.2)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            player.update();
+
+            // Actualiza y elimina las partículas que ya no son visibles
+            particles.forEach((particle, index) => {
+                if (particle.alpha <= 0) {
+                    particles.splice(index, 1);
+                } else {
+                    particle.update();
+                }
+            });
+
+            // Actualiza enemigos y gestiona colisiones
+            enemies.forEach((enemy, enemyIndex) => {
+                enemy.update();
+                const dist = Math.hypot(player.x - enemy.x, player.y - enemy.y);
+
+                // Colisión detectada
+                if (dist - enemy.radius - player.radius < 1) {
+                    // Espera un frame antes de eliminar para evitar parpadeos
+                    setTimeout(() => {
+                        if (enemy.color === player.color) {
+                            // Acierto
+                            score += 10;
+                            scoreEl.innerText = score;
+
+                            // Crea una explosión de partículas
+                            for (let i = 0; i < enemy.radius * 2; i++) {
+                                particles.push(new Particle(
+                                    enemy.x, enemy.y, Math.random() * 2.5, enemy.color,
+                                    {
+                                        x: (Math.random() - 0.5) * (Math.random() * 8),
+                                        y: (Math.random() - 0.5) * (Math.random() * 8)
+                                    }
+                                ));
+                            }
+                        } else {
+                            // Fallo
+                            lives--;
+                            screenShake();
+                            updateLivesUI();
+                            if (lives <= 0) {
+                                endGame();
+                            }
+                        }
+                        enemies.splice(enemyIndex, 1);
+                    }, 0);
+                }
+            });
+        }
+
+        // Función para terminar el juego y mostrar la puntuación
+        function endGame() {
+            gameActive = false;
+            cancelAnimationFrame(animationId);
+            clearInterval(spawnInterval);
+            
+            // Muestra el modal de fin de juego
+            modalEl.style.display = 'flex';
+            modalScore.innerText = score;
+            modalScore.classList.remove('hidden');
+            ui.classList.add('hidden');
+            modalTitle.innerText = 'Juego Terminado';
+            modalSubtitle.innerText = 'Tu puntuación final es:';
+            startGameBtn.innerText = 'Jugar de Nuevo';
+        }
+
+        // --- MANEJADORES DE EVENTOS ---
+
+        // Evento para el botón de inicio
+        startGameBtn.addEventListener('click', () => {
+            init();
+            animate();
+            spawnEnemies();
+            modalEl.style.display = 'none';
+            ui.classList.remove('hidden');
+            modalScore.classList.add('hidden');
+        });
+
+        // Evento para cambiar de color al tocar/hacer clic en el canvas
+        canvas.addEventListener('pointerdown', (event) => {
+            // Evita que el evento se propague si se hace clic en un botón sobre el canvas
+            if (event.target.tagName !== 'BUTTON' && gameActive) {
+                player.changeColor();
+            }
+        });
+
+    </script>
+</body>
+</html>
+
